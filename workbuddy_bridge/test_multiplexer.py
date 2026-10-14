@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import threading
 
 from workbuddy_bridge.multiplexer import SessionEventChannel
 
@@ -14,6 +15,12 @@ def event(session_id: str, update: dict) -> dict:
 
 
 class SessionEventChannelTests(unittest.TestCase):
+    def test_prompt_start_stops_waiting_when_request_completes_without_event(self) -> None:
+        channel = SessionEventChannel("s1")
+        completed = threading.Event()
+        completed.set()
+        self.assertFalse(channel.wait_for_prompt_start(10, completed_event=completed))
+
     def test_routes_answer_title_and_end_for_one_session(self) -> None:
         channel = SessionEventChannel("s1")
         channel.feed(

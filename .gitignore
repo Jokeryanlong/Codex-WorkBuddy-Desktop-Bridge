@@ -16,3 +16,7 @@ outputs/
 .env
 .env.*
 *.local
+*.egg-info/
+build/
+dist/
+.install-backups/

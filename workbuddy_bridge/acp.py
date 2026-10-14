@@ -16,7 +16,6 @@ import httpx
 
 
 REQUEST_HEADER = {"x-codebuddy-request": "1"}
-HOST_SESSION_PREFIX = "__workbuddy_cli_host__"
 DEFAULT_TIMEOUT_SECONDS = 600.0
 
 
@@ -51,10 +50,9 @@ def _rpc(pipe_path: str, method: str, params: dict[str, Any] | None = None) -> A
     if params is not None:
         request["params"] = params
     try:
-        with open(pipe_path, "r+b", buffering=0) as pipe:
-            pipe.write((json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8"))
-            raw = pipe.readline()
-    except OSError as exc:
+        from workbuddy_bridge.pipe_transport import exchange
+        raw = exchange(pipe_path, (json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8"))
+    except Exception as exc:
         raise WorkBuddyError(f"Cannot contact WorkBuddy sidecar: {exc}") from exc
     if not raw:
         raise WorkBuddyError("WorkBuddy sidecar returned an empty response")
@@ -76,6 +74,9 @@ def _candidate_sidecars() -> list[tuple[Path, str, int]]:
             pid = int(payload["pid"])
             runtime_id = pid_file.parent.name
             pipe = rf"\\.\pipe\workbuddy-{runtime_id}-sidecar-control"
+            control_pipe_uuid = str(payload.get("controlPipeUuid") or "").strip()
+            if control_pipe_uuid:
+                pipe = f"{pipe}-{control_pipe_uuid}"
             candidates.append((pid_file, pipe, pid))
         except (OSError, ValueError, KeyError, json.JSONDecodeError):
             continue
@@ -84,7 +85,7 @@ def _candidate_sidecars() -> list[tuple[Path, str, int]]:
 
 
 def discover_desktop_server() -> DesktopServer:
-    """Discover the live WorkBuddy desktop ACP host and its rotating password."""
+    """Find the authenticated ACP host owned by the running WorkBuddy Desktop."""
     errors: list[str] = []
     for _, pipe, sidecar_pid in _candidate_sidecars():
         try:
@@ -92,11 +93,11 @@ def discover_desktop_server() -> DesktopServer:
             hosts = [
                 item
                 for item in sessions
-                if str(item.get("sessionId", "")).startswith(HOST_SESSION_PREFIX)
+                if item.get("sessionId")
                 and item.get("acpEndpoint")
             ]
             if not hosts:
-                errors.append(f"sidecar {sidecar_pid}: desktop ACP host not found")
+                errors.append(f"sidecar {sidecar_pid}: active WorkBuddy desktop ACP host not found")
                 continue
             host = hosts[0]
             captured = _rpc(
@@ -217,6 +218,11 @@ def spawn_isolated_server(
             "CODEBUDDY_DISABLE_IDE": "1",
             "CODEBUDDY_CODE_DISABLE_TERMINAL_TITLE": "1",
             "CODEBUDDY_CONFIG_DIR": str(config_dir),
+            **(
+                {"CODEBUDDY_FORCE_LITE_WB_BUNDLE": "1"}
+                if (cli_path.parent.parent / "dist" / "codebuddy-lite-wb.mjs").is_file()
+                else {}
+            ),
         },
         "cols": 80,
         "rows": 24,
@@ -267,15 +273,16 @@ def _iter_sse_json(response: httpx.Response):
     for line in response.iter_lines():
         if line == "":
             if data_lines:
-                payload = "".join(data_lines)
+                payload = "\n".join(data_lines)
                 data_lines.clear()
                 try:
                     yield json.loads(payload)
                 except json.JSONDecodeError:
                     pass
             continue
-        if line.startswith("data: "):
-            data_lines.append(line[6:])
+        if line.startswith("data:"):
+            value = line[5:]
+            data_lines.append(value[1:] if value.startswith(" ") else value)
         elif line.startswith("{"):
             try:
                 yield json.loads(line)
@@ -283,7 +290,7 @@ def _iter_sse_json(response: httpx.Response):
                 pass
     if data_lines:
         try:
-            yield json.loads("".join(data_lines))
+            yield json.loads("\n".join(data_lines))
         except json.JSONDecodeError:
             pass
 
@@ -356,7 +363,7 @@ class AcpClient:
     def close(self) -> None:
         if self.connection_id:
             try:
-                self._http.delete(self.server.acp_endpoint, headers=self._headers())
+                self._http.delete(self.server.acp_endpoint, headers=self._headers(), timeout=3.0)
             except Exception:
                 pass
         self._http.close()
@@ -650,9 +657,11 @@ def ask_desktop(
     reasoning_effort: str = "",
 ) -> dict[str, Any]:
     from workbuddy_bridge.history import register_completed_session, wait_for_task_registration
+    from workbuddy_bridge.native import discover_desktop_server, spawn_isolated_server, kill_isolated_server, NativeClient
 
-    server = discover_desktop_server()
-    client = AcpClient(server, timeout_seconds=timeout_seconds)
+    desktop = discover_desktop_server()
+    server = spawn_isolated_server(desktop, cwd, model=model or 'deepseek-v4.1-flash')
+    client = NativeClient(server, timeout_seconds=timeout_seconds)
     try:
         client.connect()
         client.new_session(cwd)
@@ -665,6 +674,9 @@ def ask_desktop(
         stop_reason = str(response["result"].get("stopReason", ""))
         if stop_reason == "cancelled":
             raise WorkBuddyError("WorkBuddy cancelled the prompt")
+        if stop_reason != 'end_turn':
+            detail = (response['result'].get('_meta') or {}).get('codebuddy.ai/errorMessage') or stop_reason
+            raise WorkBuddyError(f'WorkBuddy prompt refused: {detail}')
         if not wait_for_task_registration(response["session_id"]):
             register_completed_session(
                 response["session_id"],
@@ -674,3 +686,4 @@ def ask_desktop(
         return response
     finally:
         client.close()
+        kill_isolated_server(server)

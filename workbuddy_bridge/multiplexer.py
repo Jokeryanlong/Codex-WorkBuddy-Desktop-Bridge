@@ -79,12 +79,19 @@ class SessionEventChannel:
                 raise WorkBuddyError(self.observer_error)
             return self.stop_reason
 
-    def wait_for_prompt_start(self, timeout_seconds: float) -> bool:
+    def wait_for_prompt_start(
+        self,
+        timeout_seconds: float,
+        *,
+        completed_event: threading.Event | None = None,
+    ) -> bool:
         deadline = time.monotonic() + max(0.0, timeout_seconds)
         with self.condition:
             while not any(_is_prompt_activity(event) for event in self.events):
                 if self.observer_error:
                     raise WorkBuddyError(self.observer_error)
+                if completed_event and completed_event.is_set():
+                    return False
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return False

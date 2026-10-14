@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,10 +11,70 @@ from unittest.mock import Mock, patch
 from workbuddy_bridge.acp import (
     AcpClient,
     DesktopServer,
+    _candidate_sidecars,
+    discover_desktop_server,
     _session_events,
     _session_title,
     spawn_isolated_server,
 )
+
+
+class SidecarDiscoveryTests(unittest.TestCase):
+    def test_candidate_uses_control_pipe_uuid(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "wb" / "runtime-123"
+            root.mkdir(parents=True)
+            (root / "sidecar.pid").write_text(
+                json.dumps({"pid": 55, "controlPipeUuid": "pipe-uuid"}), encoding="utf-8"
+            )
+            with patch.dict(os.environ, {"TEMP": temp_dir}):
+                candidate, pipe, pid = _candidate_sidecars()[0]
+            self.assertEqual(candidate, root / "sidecar.pid")
+            self.assertEqual(pid, 55)
+            self.assertTrue(pipe.endswith("workbuddy-runtime-123-sidecar-control-pipe-uuid"))
+
+    def test_random_desktop_host_id_uses_captured_temporary_password(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            host = {
+                "sessionId": "33963572-44b1-4c5f-a0c1-fcf2bd1b8f4a",
+                "acpEndpoint": "http://127.0.0.1:54321/api/v1/acp",
+                "pid": 23804,
+            }
+            captured = {"text": "http://127.0.0.1:54321/?password=rotating%2Bpassword\x1b\\"}
+            response = Mock()
+            response.is_success = True
+            response.json.return_value = {"authEnabled": True, "authenticated": True}
+            http_client = Mock()
+            http_client.__enter__ = Mock(return_value=http_client)
+            http_client.__exit__ = Mock(return_value=False)
+            http_client.get.return_value = response
+            with (
+                patch("workbuddy_bridge.acp._candidate_sidecars", return_value=[
+                    (Path(temp_dir) / "sidecar.pid", "\\\\.\\pipe\\workbuddy-current-control-uuid", 55),
+                ]),
+                patch("workbuddy_bridge.acp._rpc", side_effect=[[host], captured]) as rpc,
+                patch("workbuddy_bridge.acp.httpx.Client", return_value=http_client),
+            ):
+                server = discover_desktop_server()
+            self.assertEqual(server.sidecar_pid, 55)
+            self.assertEqual(server.runtime_pid, 23804)
+            self.assertEqual(server.sidecar_pipe, "\\\\.\\pipe\\workbuddy-current-control-uuid")
+            self.assertEqual(server.session_host_id, host["sessionId"])
+            self.assertEqual(server.password, "rotating+password")
+            self.assertEqual(rpc.call_args_list[1].args[1], "session.capture")
+
+    def test_live_sidecar_without_desktop_host_is_not_authenticated(self) -> None:
+        with (
+            patch("workbuddy_bridge.acp._candidate_sidecars", return_value=[
+                (Path("sidecar.pid"), "\\\\.\\pipe\\workbuddy-current-control-uuid", 55),
+            ]),
+            patch("workbuddy_bridge.acp._rpc", return_value=[]),
+            patch("workbuddy_bridge.acp._process_executable") as executable,
+        ):
+            with self.assertRaisesRegex(Exception, "active WorkBuddy desktop ACP host not found"):
+                discover_desktop_server()
+        executable.assert_not_called()
+
 
 
 class SessionTitleTests(unittest.TestCase):
@@ -175,6 +236,9 @@ class TaskSessionTests(unittest.TestCase):
             executable.touch()
             cli_path.parent.mkdir(parents=True)
             cli_path.touch()
+            lite_bundle = cli_path.parent.parent / "dist" / "codebuddy-lite-wb.mjs"
+            lite_bundle.parent.mkdir(parents=True)
+            lite_bundle.touch()
             config_dir = root / "profile"
             desktop = DesktopServer(
                 "http://localhost:1/api/v1/acp",
@@ -215,6 +279,7 @@ class TaskSessionTests(unittest.TestCase):
                 params["env"]["CODEBUDDY_CONFIG_DIR"],
                 str(config_dir.resolve()),
             )
+            self.assertEqual(params["env"]["CODEBUDDY_FORCE_LITE_WB_BUNDLE"], "1")
             self.assertEqual(
                 params["args"][-2:],
                 ["--session-id", "existing-session"],

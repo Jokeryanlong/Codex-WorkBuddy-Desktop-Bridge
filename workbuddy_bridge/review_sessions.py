@@ -261,7 +261,12 @@ def prepare_review_resume(
             raise ValueError(
                 f"旧会话 {session_id} 的对话记录无法证明其身份为 {identity}"
             )
-        if normalized_target.casefold() not in combined.casefold():
+        # Keep the caller's absolute spelling too: Windows temp directories may
+        # use an 8.3 alias that resolve() expands to a different literal string.
+        requested = Path(target)
+        literal_target = str(requested if requested.is_absolute() else Path(cwd) / requested)
+        if not any(candidate.casefold() in combined.casefold()
+                   for candidate in (normalized_target, literal_target)):
             raise ValueError(
                 f"旧会话 {session_id} 的对话记录不包含当前审查目标，拒绝续接"
             )

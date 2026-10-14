@@ -10,7 +10,7 @@ The bridge owns the four WorkBuddy identity prompts. Keep the identity scopes di
 ## Runtime selection
 
 1. Call `workbuddy_status` before dispatching any identity.
-2. Require an open WorkBuddy Desktop window. Version 0.4.1 uses the desktop native conversation SDK. Require backend=workbuddy-desktop-native-conversation and desktop_realtime=true. Launch WorkBuddy with its native automation shortcut. Tasks appear in its own chat window. `workbuddy_doctor` validates native SDK readiness; a real prompt is still required to prove model-service access. Check `server_version` and `source_path` to detect a stale Codex MCP process.
+2. Require an open WorkBuddy Desktop window. Version 0.4.2 uses the desktop native conversation SDK. Require backend=workbuddy-desktop-native-conversation and desktop_realtime=true. Launch WorkBuddy with its native automation shortcut. Tasks appear in its own chat window. `workbuddy_doctor` validates native SDK readiness; a real prompt is still required to prove model-service access. Check `server_version` and `source_path` to detect a stale Codex MCP process.
 3. If the WorkBuddy MCP tool is missing, transport is closed, the desktop account is unavailable, or discovery fails, report the specific missing connection stage. Do not replace the WorkBuddy Desktop worker with a manually launched CodeBuddy CLI/TUI.
 4. Do not run multiple routes for the same task at the same time. Surface ordinary task-specific failures.
 

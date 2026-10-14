@@ -94,6 +94,14 @@ class ReviewSessionTests(unittest.TestCase):
         registry = json.loads(registry_path().read_text(encoding="utf-8"))
         self.assertEqual(registry["sessions"][session_id]["identity"], "S3")
 
+    def test_legacy_session_accepts_absolute_path_before_canonicalization(self) -> None:
+        session_id = str(uuid.uuid4())
+        (self.cwd / 'nested').mkdir()
+        literal = self.cwd / 'nested' / '..' / 'app.html'
+        self._transcript(session_id, f'你是 S3\n审查目标：{literal}')
+        resume = prepare_review_resume(session_id, 'S3', str(self.cwd), str(literal))
+        self.assertEqual(Path(resume.target), self.target.resolve())
+
     def test_legacy_session_is_rejected_when_target_is_not_in_transcript(self) -> None:
         session_id = str(uuid.uuid4())
         self._transcript(session_id, "你是 S2\n审查另一个文件")

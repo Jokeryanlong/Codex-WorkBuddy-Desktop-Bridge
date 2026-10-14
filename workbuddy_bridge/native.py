@@ -6,7 +6,7 @@ from pathlib import Path
 from workbuddy_bridge.acp import WorkBuddyError
 from workbuddy_bridge.desktop import discover_desktop_server as discover_window, profile_dir
 
-VERSION='0.4.1'
+VERSION='0.4.2'
 BACKEND='workbuddy-desktop-native-conversation'
 PORT=int(os.environ.get('WORKBUDDY_NATIVE_PORT','18794'))
 

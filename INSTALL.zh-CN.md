@@ -1,4 +1,4 @@
-# WorkBuddy 桌面原生对话 MCP 分享版 0.4.1
+# WorkBuddy 桌面原生对话 MCP 分享版 0.4.2
 
 这是源码安装包。Codex 将任务发送到 WorkBuddy 桌面原生对话，你能在 WorkBuddy 自带的对话窗口看到执行过程。它不是独立的 CodeBuddy CLI。
 
@@ -10,7 +10,7 @@
 
 ## 安装
 
-1. 解压到长期保留的位置，例如 `D:\Tools\WorkBuddy-Desktop-Bridge-0.4.1`。安装后不要移动或删除目录。
+1. 解压到长期保留的位置，例如 `D:\Tools\WorkBuddy-Desktop-Bridge-0.4.2`。安装后不要移动或删除目录。
 2. 先打开已登录的 WorkBuddy。在解压目录打开 PowerShell，运行：
 
    ```powershell
@@ -52,6 +52,6 @@
 
 该版本使用 WorkBuddy 内部桌面 SDK，升级 WorkBuddy 后需重新验证兼容性；目前没有证明兼容所有版本。
 
-## 0.4.1 问答模式
+## 0.4.2 问答模式
 
 新建、续接和每轮发送前均强制设置并核验 Ask 问答模式与 default 权限，避免默认进入 craft 全自动执行。每次只提出一个分析问题，收到答案后再进入下一步。Ask 不代表所有请求都会立即完成，执行时限仍然生效。

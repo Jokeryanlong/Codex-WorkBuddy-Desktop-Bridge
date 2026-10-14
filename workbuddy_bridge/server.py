@@ -24,6 +24,8 @@ from workbuddy_bridge.history import register_completed_session, wait_for_task_r
 from workbuddy_bridge.identities import compose_identity_prompt, normalize_identity
 from workbuddy_bridge.multiplexer import SessionEventChannel
 from workbuddy_bridge.scheduler import Scheduler
+from workbuddy_bridge.progress import ProgressJournal
+from workbuddy_bridge.native import call as native_call
 from workbuddy_bridge.review_sessions import (
     REVIEW_IDENTITIES,
     bind_review_session,
@@ -86,6 +88,8 @@ class TaskState:
     warning: str | None = None
     cleanup_error: str | None = None
     last_activity: str = ""
+    native_state: str = ""
+    progress: ProgressJournal = field(default_factory=ProgressJournal)
     request_id: str = ""
     request_signature: tuple = ()
     client: AcpClient | None = None
@@ -241,6 +245,9 @@ def _snapshot(task: TaskState, include_answer: bool) -> dict[str, Any]:
         "answer": task.answer if include_answer and task.state == "completed" else "",
         "answer_chars": len(task.answer),
         "last_activity": task.last_activity or None,
+        "native_state": task.native_state or None,
+        "progress_cursor": task.progress.sequence,
+        "awaiting_user": task.native_state in {"waiting_permission", "waiting_question", "waiting_input"},
         "cancel_requested": task.cancel_requested,
         "warning": task.warning,
         "cleanup_error": task.cleanup_error,
@@ -265,6 +272,9 @@ def _run(task: TaskState, timeout_seconds: float) -> None:
         with task.condition:
             if isinstance(update, dict):
                 task.last_activity = str(update.get("sessionUpdate") or task.last_activity)
+                task.progress.feed(update)
+                if update.get('sessionUpdate')=='native_progress':
+                    task.native_state = str(update.get('state') or '')
             task.updated_at = time.time()
 
     client: AcpClient | None = None
@@ -481,6 +491,9 @@ def workbuddy_status(task_id: str = "") -> dict[str, Any]:
             "desktop_realtime": True,
             "conversation_mode": "ask",
             "permission_mode": "default",
+            "direct_session_control": True,
+            "incremental_progress": True,
+            "builtin_tool_dispatch": "not_exposed_by_verified_sdk",
         }
     except Exception as exc:
         return {"ok": False, "connected": False, "error": str(exc)}
@@ -669,6 +682,49 @@ def workbuddy_result(task_id: str, offset: int = 0, limit: int = 12000) -> dict[
         text = task.answer if task.state == "completed" else ""
         end = offset + limit
         return {"ok": True, "task_id": task_id, "state": task.state, "answer": text[offset:end], "total_chars": len(text), "next_offset": end if end < len(text) else None, "error": task.error}
+
+
+@bridge_tool()
+def workbuddy_capabilities() -> dict[str, Any]:
+    """Discover verified direct SDK controls; these do not invoke WorkBuddy's model."""
+    return {"ok": True, "server_version": VERSION, "direct_session_control": True,
+        "builtin_tool_dispatch": "not_exposed_by_verified_sdk", "conversation_mode": "ask",
+        "tools": [
+            {"name": "workbuddy_session", "arguments": {"session_id": "UUID"}, "effect": "read native session metadata without sending a prompt"},
+            {"name": "workbuddy_progress", "arguments": {"task_id": "string", "cursor": "integer>=0", "limit": "1..100"}, "effect": "read public answer deltas, tool statuses and lifecycle events"},
+            {"name": "workbuddy_start", "effect": "send one bounded Ask turn"},
+            {"name": "workbuddy_cancel", "effect": "cancel a bridge-owned task"}],
+        "reasoning_included": False}
+
+
+@bridge_tool()
+def workbuddy_session(session_id: str) -> dict[str, Any]:
+    """Directly inspect a native session's state and Ask mode; no model turn or history content."""
+    try:
+        sid = normalize_session_id(session_id)
+        return {"ok": True, **native_call('inspect', {'session_id': sid})}
+    except (ValueError, WorkBuddyError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@bridge_tool()
+def workbuddy_progress(task_id: str, cursor: int = 0, limit: int = 50) -> dict[str, Any]:
+    """Read incremental public progress while a task runs. Reuse next_cursor; a wait timeout is not task completion."""
+    with TASKS_LOCK:
+        task = TASKS.get(task_id)
+    if not task:
+        return {"ok": False, "error": f"Unknown task_id: {task_id}"}
+    with task.condition:
+        try: page = task.progress.read(cursor, limit)
+        except ValueError as exc:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": str(exc)}
+        finished = task.state in TERMINAL_STATES
+        waiting = task.native_state in {'waiting_permission', 'waiting_question', 'waiting_input'}
+        return {"ok": True, "task_id": task_id, "session_id": task.session_id,
+            "state": task.state, "native_state": task.native_state or None,
+            "finished": finished, "awaiting_user": waiting, "error": task.error,
+            "next_action": "respond in WorkBuddy desktop" if waiting else "read final result or send the next step" if finished and task.state=='completed' else "inspect error" if finished else "poll progress or wait; do not resubmit this task",
+            **page}
 
 
 if __name__ == "__main__":

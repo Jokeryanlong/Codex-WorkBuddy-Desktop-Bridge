@@ -6,7 +6,7 @@ from pathlib import Path
 from workbuddy_bridge.acp import WorkBuddyError
 from workbuddy_bridge.desktop import discover_desktop_server as discover_window, profile_dir
 
-VERSION='0.4.2'
+VERSION='0.4.3'
 BACKEND='workbuddy-desktop-native-conversation'
 PORT=int(os.environ.get('WORKBUDDY_NATIVE_PORT','18794'))
 
@@ -79,15 +79,28 @@ class NativeClient:
             if event_callback and event_callback is not self.event_callback:event_callback(event)
         call('dispatch',{'context':self.server.context,'prompt':text})
         deadline=time.monotonic()+self.timeout_seconds
-        previous='';accepted=False
+        previous='';accepted=False;previous_status=None;tool_states={}
         while time.monotonic()<deadline:
             if self._cancel.is_set():raise WorkBuddyError('Task cancelled by caller')
             result=call('read',{'context':self.server.context})
             if result.get('accepted') and not accepted:
                 accepted=True;feed({'sessionUpdate':'user_message_chunk','content':{'type':'text','text':text}})
+            status=(result.get('state'),result.get('mode'),result.get('permission_mode'))
+            if status!=previous_status:
+                feed({'sessionUpdate':'native_progress','state':status[0],'mode':status[1],'permission_mode':status[2]})
+                previous_status=status
+            for index,tool in enumerate(result.get('tools') or []):
+                key=tool.get('id') or f'tool-{index}'
+                value=(tool.get('name'),tool.get('status'))
+                if tool_states.get(key)!=value:
+                    feed({'sessionUpdate':'tool_call_update' if key in tool_states else 'tool_call',
+                        'toolCallId':key,'title':value[0],'status':value[1]})
+                    tool_states[key]=value
             answer=result.get('answer') or ''
             if answer.startswith(previous) and len(answer)>len(previous):
                 feed({'sessionUpdate':'agent_message_chunk','content':{'type':'text','text':answer[len(previous):]}})
+            elif answer!=previous:
+                feed({'sessionUpdate':'agent_message_replace','content':{'type':'text','text':answer}})
             previous=answer
             if result.get('done'):
                 reason='end_turn' if result.get('state')=='completed' else 'cancelled' if result.get('state') in {'cancelled','aborted'} else 'refusal'

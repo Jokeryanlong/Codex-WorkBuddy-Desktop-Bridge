@@ -1,19 +1,29 @@
 'use strict';
 const fs=require('node:fs');
 const input=JSON.parse(fs.readFileSync(0,'utf8'));
-const allowed=new Set(['probe','create','load','configure','dispatch','read','cancel','release']);
+const allowed=new Set(['probe','inspect','create','load','configure','dispatch','read','cancel','release']);
 if(!allowed.has(input.op))throw Error('Unknown native operation');
 async function operation(op,args){
   const sdk=globalThis.wb;
   if(!sdk?.conversations?.prepareInput)throw Error('WorkBuddy native conversation SDK is not ready');
   const contexts=globalThis.__codexWorkBuddyNativeContexts??=(new Map());
+  const publicTools=content=>(Array.isArray(content)?content:[]).filter(b=>b?.type==='tool').slice(-128).map(b=>({id:String(b.toolCallId||'').slice(0,180),name:String(b.toolName||b._meta?.['codebuddy.ai/toolName']||b.kind||'tool').slice(0,180),status:String(b.status||'').slice(0,80)}));
   if(op==='probe')return {ready:true,current_session_id:sdk.conversations.currentId||null,version:globalThis.__WORKBUDDY_VERSION__||null};
+  if(op==='inspect'){
+    const c=await sdk.conversations.get(args.session_id);
+    if(!c?.info?.id||c.info.id!==args.session_id)throw Error('Native conversation not found');
+    const history=await c.requests();
+    const latest=(history.items||[]).slice().sort((a,b)=>(b.timestamp||0)-(a.timestamp||0))[0];
+    return {session_id:c.info.id,title:c.info.title||'',state:c.info.state,origin:c.info.origin||'desktop',mode:c.configManager.mode,permission_mode:c.configManager.permissionMode,
+      latest_request:latest?{request_id:latest.id,state:latest.state||latest.assistantMessage?.state,tools:publicTools(latest.assistantMessage?.content)}:null};
+  }
   let job=contexts.get(args.context);
   if(op==='create'||op==='load'){
     if(job)return {session_id:job.c.info.id,title:job.c.info.title||'',state:job.c.info.state};
     const c=op==='create'?await sdk.conversations.create({conversationId:args.session_id,cwd:args.cwd,transport:'local',isPlayground:true,conversationOrigin:'local',welcomeMode:'working',mode:'ask',model:args.model}):await sdk.conversations.get(args.session_id);
     if(!c?.info?.id)throw Error('WorkBuddy did not return a native conversation');
     if(c.info.id!==args.session_id)throw Error('WorkBuddy returned an unexpected conversation ID');
+    if(op==='load'&&['working','planning','pending','waiting_permission','waiting_question'].includes(c.info.state))throw Error('Native conversation is busy; wait for the desktop task or cancel it explicitly before resuming');
     contexts.set(args.context,{c,sent:false,done:false});
     return {session_id:c.info.id,title:c.info.title||'',state:c.info.state,origin:c.info.origin||'desktop'};
   }
@@ -53,8 +63,10 @@ async function operation(op,args){
   job.request_id=request.id;
   const state=request.state||request.assistantMessage?.state;
   const done=['completed','failed','cancelled','error','aborted'].includes(state);
+  // Public tool metadata only; inputs, outputs and reasoning blocks stay out of MCP.
+  const tools=publicTools(request.assistantMessage?.content);
   if(done)job.done=true;
-  return {accepted:true,done,state,mode:job.c.configManager.mode,permission_mode:job.c.configManager.permissionMode,request_id:request.id,session_id:job.c.info.id,title:job.c.info.title||'',answer:textOf(request.assistantMessage?.content),error:request.error?.message||request.assistantMessage?.error?.message||null,usage:request.usage||null};
+  return {accepted:true,done,state,tools,mode:job.c.configManager.mode,permission_mode:job.c.configManager.permissionMode,request_id:request.id,session_id:job.c.info.id,title:job.c.info.title||'',answer:textOf(request.assistantMessage?.content),error:request.error?.message||request.assistantMessage?.error?.message||null,usage:request.usage||null};
 }
 (async()=>{
  const endpoint=`http://127.0.0.1:${input.port||18794}`;

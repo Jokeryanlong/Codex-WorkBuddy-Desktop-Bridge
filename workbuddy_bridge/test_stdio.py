@@ -31,6 +31,7 @@ class StdioTests(unittest.TestCase):
                         self.assertEqual(names, {
                             "workbuddy_start", "workbuddy_wait", "workbuddy_status",
                             "workbuddy_cancel", "workbuddy_list", "workbuddy_result", "workbuddy_doctor",
+                        "workbuddy_progress", "workbuddy_session", "workbuddy_capabilities",
                         })
                         invalid = await session.call_tool("workbuddy_start", {"prompt": "test", "timeout_seconds": 0})
                         self.assertFalse(json.loads(invalid.content[0].text)["ok"])

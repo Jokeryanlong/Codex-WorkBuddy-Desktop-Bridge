@@ -2,7 +2,7 @@
 
 让 Codex 领航 WorkBuddy 桌面端：Codex 提出一个有界问题，WorkBuddy 在自己的原生聊天窗口显示分析过程和答案，Codex 核验证据后再决定下一步。
 
-**当前版本：0.4.2。默认 Ask 问答模式，默认权限 `default`。**
+**当前版本：0.4.3。默认 Ask 问答模式，默认权限 `default`。**
 
 本项目直接调用已登录 WorkBuddy 桌面的原生 conversation SDK。不需要单独登录 CodeBuddy CLI，不创建独立后台聊天面板，也不复制账号令牌。此仓库保留 [上游项目](https://github.com/gosick233-cloud/Codex-WorkBuddy-Desktop-Bridge) 的 MIT 许可证，并发布原生桌面对话及 Ask 模式改进。
 
@@ -15,7 +15,7 @@
 
 ## 快速安装
 
-1. 从 [Releases](https://github.com/Jokeryanlong/Codex-WorkBuddy-Desktop-Bridge/releases/latest) 下载 `WorkBuddy-Desktop-Bridge-0.4.2-share.zip`，解压到长期保留的目录。也可以使用 Git：
+1. 从 [Releases](https://github.com/Jokeryanlong/Codex-WorkBuddy-Desktop-Bridge/releases/latest) 下载 `WorkBuddy-Desktop-Bridge-0.4.3-share.zip`，解压到长期保留的目录。也可以使用 Git：
 
    ```powershell
    git clone https://github.com/Jokeryanlong/Codex-WorkBuddy-Desktop-Bridge.git
@@ -51,7 +51,7 @@
 `workbuddy_status` 应返回：
 
 ```text
-server_version: 0.4.2
+server_version: 0.4.3
 backend: workbuddy-desktop-native-conversation
 desktop_realtime: true
 conversation_mode: ask
@@ -86,10 +86,13 @@ python -m pip install -e .
 python -m unittest discover -s workbuddy_bridge -p 'test_*.py' -v
 ```
 
-Windows + WorkBuddy 5.8.2 的本地验证：72 项测试通过，新建和续接原生 Ask 会话完成，旧 `craft/fullAccess` 会话恢复为 `ask/default` 后完成回复。GitHub Actions 在 Windows 上检查 Python 3.10 和 3.13；依赖真实 WorkBuddy Node 的 SDK 合约测试在未安装桌面端的 CI 中跳过。CI 不代表真实桌面连接验证。
+Windows + WorkBuddy 5.8.2 的本地验证：80 项测试通过，新建和续接原生 Ask 会话完成，旧 `craft/fullAccess` 会话恢复为 `ask/default` 后完成回复。GitHub Actions 在 Windows 上检查 Python 3.10 和 3.13；依赖真实 WorkBuddy Node 的 SDK 合约测试在未安装桌面端的 CI 中跳过。CI 不代表真实桌面连接验证。
 
 ## 分发与许可证
 
 公开源码和下载包不含开发者的虚拟环境、全局 Codex 配置、WorkBuddy 账号目录、登录凭据、任务日志、样本或分析输出。使用者必须登录自己的 WorkBuddy 账号。
 
 [MIT License](LICENSE)。
+## 0.4.3 SDK 直驱与增量进度
+
+新增 workbuddy_capabilities、workbuddy_session 和 workbuddy_progress；状态查询直接调用 SDK，不触发模型。任务执行时按游标读取公开回答增量和工具状态，再决定下一步。具体协议和能力边界见 [DIRECT-DRIVE.md](DIRECT-DRIVE.md)。

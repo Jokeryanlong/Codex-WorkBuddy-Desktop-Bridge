@@ -114,6 +114,15 @@ class ReviewSessionTests(unittest.TestCase):
                 str(self.target),
             )
 
+    def test_latest_binding_is_deterministic_when_wall_clock_ties(self) -> None:
+        first,second=str(uuid.uuid4()),str(uuid.uuid4())
+        with patch('workbuddy_bridge.review_sessions.time.time',return_value=1000):
+            for sid in (first,second):
+                bind_review_session(sid,'S1',str(self.cwd),str(self.target))
+            self.assertEqual(find_review_session('S1',str(self.cwd),str(self.target)),second)
+            bind_review_session(first,'S1',str(self.cwd),str(self.target))
+            self.assertEqual(find_review_session('S1',str(self.cwd),str(self.target)),first)
+
     def test_rereview_prompt_requires_regression_and_full_incremental_review(self) -> None:
         session_id = str(uuid.uuid4())
         self._transcript(session_id, f"你是 S1\n审查 {self.target}")

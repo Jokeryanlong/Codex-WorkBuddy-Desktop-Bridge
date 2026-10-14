@@ -86,7 +86,7 @@ python -m pip install -e .
 python -m unittest discover -s workbuddy_bridge -p 'test_*.py' -v
 ```
 
-Windows + WorkBuddy 5.8.2 的本地验证：81 项测试通过，新建和续接原生 Ask 会话完成，旧 `craft/fullAccess` 会话恢复为 `ask/default` 后完成回复。GitHub Actions 在 Windows 上检查 Python 3.10 和 3.13；依赖真实 WorkBuddy Node 的 SDK 合约测试在未安装桌面端的 CI 中跳过。CI 不代表真实桌面连接验证。
+Windows + WorkBuddy 5.8.2 的本地验证：82 项测试通过，新建和续接原生 Ask 会话完成，旧 `craft/fullAccess` 会话恢复为 `ask/default` 后完成回复。GitHub Actions 在 Windows 上检查 Python 3.10 和 3.13；依赖真实 WorkBuddy Node 的 SDK 合约测试在未安装桌面端的 CI 中跳过。CI 不代表真实桌面连接验证。
 
 ## 分发与许可证
 

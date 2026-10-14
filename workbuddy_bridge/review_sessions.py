@@ -182,6 +182,9 @@ def bind_review_session(
         else:
             created_at = now
 
+        update_sequence = max((int(binding.get('update_sequence') or 0)
+                               for binding in sessions.values()), default=0) + 1
+
         sessions[session_id] = {
             "identity": identity,
             "cwd": normalized_cwd,
@@ -189,6 +192,7 @@ def bind_review_session(
             "baseline_sha256": baseline_sha256,
             "created_at": created_at,
             "updated_at": now,
+            "update_sequence": update_sequence,
         }
         _write_registry_unlocked(sessions)
 
@@ -215,7 +219,8 @@ def find_review_session(identity: str, cwd: str, target: str) -> str:
             "拒绝把“复审”悄悄改成全新审查"
         )
     matches.sort(
-        key=lambda item: float(item[1].get("updated_at") or 0),
+        key=lambda item: (int(item[1].get('update_sequence') or 0),
+                          float(item[1].get("updated_at") or 0)),
         reverse=True,
     )
     return normalize_session_id(matches[0][0])

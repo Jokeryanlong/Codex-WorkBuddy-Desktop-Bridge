@@ -1,10 +1,22 @@
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 from workbuddy_bridge.progress import ProgressJournal
 from workbuddy_bridge import server as s
 from workbuddy_bridge import native as n
 
 class ProgressTests(unittest.TestCase):
+    def test_direct_file_read_rejects_escape_and_routes_sdk_page(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'sample.txt').write_text('page',encoding='utf-8')
+            with patch.object(s,'native_call',return_value={'text':'pa','next_offset':2}) as call:
+                out=s.workbuddy_read_file('sample.txt',str(root),0,2)
+                self.assertTrue(out['ok']);self.assertEqual(out['text'],'pa')
+                self.assertEqual(call.call_args.args[0],'read_file')
+                self.assertEqual(call.call_args.args[1]['limit'],2)
+            with patch.object(s,'native_call') as call:
+                self.assertFalse(s.workbuddy_read_file('../outside.txt',str(root))['ok']);call.assert_not_called()
     def test_cursor_pages_do_not_repeat_events(self):
         p=ProgressJournal()
         for text in ('one','two'):

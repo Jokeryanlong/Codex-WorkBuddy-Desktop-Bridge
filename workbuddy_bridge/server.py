@@ -688,13 +688,30 @@ def workbuddy_result(task_id: str, offset: int = 0, limit: int = 12000) -> dict[
 def workbuddy_capabilities() -> dict[str, Any]:
     """Discover verified direct SDK controls; these do not invoke WorkBuddy's model."""
     return {"ok": True, "server_version": VERSION, "direct_session_control": True,
+        "direct_workspace_text_read": True,
         "builtin_tool_dispatch": "not_exposed_by_verified_sdk", "conversation_mode": "ask",
         "tools": [
             {"name": "workbuddy_session", "arguments": {"session_id": "UUID"}, "effect": "read native session metadata without sending a prompt"},
+            {"name": "workbuddy_read_file", "arguments": {"path": "string", "cwd": "workspace directory", "offset": "integer>=0", "limit": "1..12000"}, "effect": "read a workspace text file through WorkBuddy SDK without a model turn"},
             {"name": "workbuddy_progress", "arguments": {"task_id": "string", "cursor": "integer>=0", "limit": "1..100"}, "effect": "read public answer deltas, tool statuses and lifecycle events"},
             {"name": "workbuddy_start", "effect": "send one bounded Ask turn"},
             {"name": "workbuddy_cancel", "effect": "cancel a bridge-owned task"}],
         "reasoning_included": False}
+
+
+@bridge_tool()
+def workbuddy_read_file(path: str, cwd: str = "", offset: int = 0, limit: int = 12000) -> dict[str, Any]:
+    """Direct SDK text read, scoped to cwd. Files up to 1 MiB; paginate with next_offset. No model turn."""
+    try:
+        if offset<0 or not 1<=limit<=12000:raise ValueError('offset must be nonnegative; limit must be 1..12000')
+        root=Path(cwd or ROOT).resolve()
+        target=(root/path).resolve()
+        if not root.is_dir() or not target.is_relative_to(root):raise ValueError('path must be within the existing cwd directory')
+        if not target.is_file():raise ValueError('path must be an existing text file')
+        if target.stat().st_size>1024*1024:raise ValueError('file exceeds the 1 MiB text-read limit')
+        return {"ok": True, **native_call('read_file',{'path':str(target),'cwd':str(root),'offset':offset,'limit':limit})}
+    except (ValueError,OSError,WorkBuddyError) as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 @bridge_tool()

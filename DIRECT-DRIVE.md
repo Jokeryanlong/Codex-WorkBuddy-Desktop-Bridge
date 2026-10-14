@@ -8,6 +8,7 @@ Firefox Reverse 的 `listTools / callTool` 通过同一个工具路由器直接�
 
 - `workbuddy_capabilities()`：发现已经验证的能力及边界，不发送模型请求。
 - `workbuddy_session(session_id)`：直接查询原生会话状态、模式、权限、最新请求及工具名称/状态。不发送模型请求，不切换会话，不改变模式。
+- `workbuddy_read_file(path, cwd, offset=0, limit=12000)`：通过 WorkBuddy `workspaceFiles.readText` 直接读取 cwd 内的文本文件，不经过模型。最大文件 1 MiB，返回分页及 next_offset；拒绝目录外路径。
 - `workbuddy_progress(task_id, cursor=0, limit=50)`：读取运行中公开回答增量、工具状态和原生状态。每轮把 `next_cursor` 作为下一次的 `cursor`，避免重复输出历史。
 - SDK 返回的 `reasoning`、用户提示词、工具参数、工具原始结果不进入进度接口。
 - 桌面会话正在工作、规划或等待用户响应时，拒绝另一轮续接，不抢占正在运行的会话。
@@ -28,6 +29,6 @@ Firefox Reverse 的 `listTools / callTool` 通过同一个工具路由器直接�
 
 回答被模型重写时返回 `answer_replace`，调用者应替换已累积的回答；后续 `answer_delta` 继续追加。工具状态变化才产生事件，未变化的轮询不重复发送。
 
-本版本仍通过本机 CDP 调用 WorkBuddy 原生 SDK，并轮询 SDK 请求快照。没有改造为 WorkBuddy 服务端事件推送，也没有开放任意 JavaScript 执行或内置 Shell 工具直调。该边界在 `workbuddy_capabilities` 中明确报告。
+本版本仍通过本机 CDP 调用 WorkBuddy 原生 SDK，并轮询 SDK 请求快照。已验证的文件读取接口可直接使用；没有改造为 WorkBuddy 服务端事件推送，也没有开放任意 JavaScript 执行或内置 Shell 工具直调。该边界在 `workbuddy_capabilities` 中明确报告。
 
 进度缓存在当前 MCP 进程内，MCP 重启后不恢复旧 task_id。原生会话仍可通过 session_id 直接查询。该功能不承诺提供模型完整内部推理。

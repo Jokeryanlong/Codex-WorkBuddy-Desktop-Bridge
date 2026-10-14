@@ -86,7 +86,7 @@ python -m pip install -e .
 python -m unittest discover -s workbuddy_bridge -p 'test_*.py' -v
 ```
 
-Windows + WorkBuddy 5.8.2 的本地验证：80 项测试通过，新建和续接原生 Ask 会话完成，旧 `craft/fullAccess` 会话恢复为 `ask/default` 后完成回复。GitHub Actions 在 Windows 上检查 Python 3.10 和 3.13；依赖真实 WorkBuddy Node 的 SDK 合约测试在未安装桌面端的 CI 中跳过。CI 不代表真实桌面连接验证。
+Windows + WorkBuddy 5.8.2 的本地验证：81 项测试通过，新建和续接原生 Ask 会话完成，旧 `craft/fullAccess` 会话恢复为 `ask/default` 后完成回复。GitHub Actions 在 Windows 上检查 Python 3.10 和 3.13；依赖真实 WorkBuddy Node 的 SDK 合约测试在未安装桌面端的 CI 中跳过。CI 不代表真实桌面连接验证。
 
 ## 分发与许可证
 
@@ -95,4 +95,4 @@ Windows + WorkBuddy 5.8.2 的本地验证：80 项测试通过，新建和续接
 [MIT License](LICENSE)。
 ## 0.4.3 SDK 直驱与增量进度
 
-新增 workbuddy_capabilities、workbuddy_session 和 workbuddy_progress；状态查询直接调用 SDK，不触发模型。任务执行时按游标读取公开回答增量和工具状态，再决定下一步。具体协议和能力边界见 [DIRECT-DRIVE.md](DIRECT-DRIVE.md)。
+新增 workbuddy_capabilities、workbuddy_session、workbuddy_read_file 和 workbuddy_progress；状态查询直接调用 SDK，不触发模型。任务执行时按游标读取公开回答增量和工具状态，再决定下一步。具体协议和能力边界见 [DIRECT-DRIVE.md](DIRECT-DRIVE.md)。

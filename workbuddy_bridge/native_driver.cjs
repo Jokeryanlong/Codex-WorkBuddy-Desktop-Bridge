@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs');
 const input=JSON.parse(fs.readFileSync(0,'utf8'));
-const allowed=new Set(['probe','inspect','create','load','configure','dispatch','read','cancel','release']);
+const allowed=new Set(['probe','inspect','read_file','create','load','configure','dispatch','read','cancel','release']);
 if(!allowed.has(input.op))throw Error('Unknown native operation');
 async function operation(op,args){
   const sdk=globalThis.wb;
@@ -9,6 +9,15 @@ async function operation(op,args){
   const contexts=globalThis.__codexWorkBuddyNativeContexts??=(new Map());
   const publicTools=content=>(Array.isArray(content)?content:[]).filter(b=>b?.type==='tool').slice(-128).map(b=>({id:String(b.toolCallId||'').slice(0,180),name:String(b.toolName||b._meta?.['codebuddy.ai/toolName']||b.kind||'tool').slice(0,180),status:String(b.status||'').slice(0,80)}));
   if(op==='probe')return {ready:true,current_session_id:sdk.conversations.currentId||null,version:globalThis.__WORKBUDDY_VERSION__||null};
+  if(op==='read_file'){
+    if(!sdk.workspaceFiles?.readText)throw Error('WorkBuddy workspace text reader is unavailable');
+    if(!Number.isInteger(args.offset)||args.offset<0||!Number.isInteger(args.limit)||args.limit<1||args.limit>12000)throw Error('Invalid file page bounds');
+    const text=await sdk.workspaceFiles.readText({path:args.path,allowedDirs:[args.cwd]});
+    if(typeof text!=='string')throw Error('WorkBuddy did not return text');
+    const chars=Array.from(text);
+    const end=args.offset+args.limit;
+    return {path:args.path,text:chars.slice(args.offset,end).join(''),total_chars:chars.length,next_offset:end<chars.length?end:null,source:'workbuddy.workspaceFiles.readText'};
+  }
   if(op==='inspect'){
     const c=await sdk.conversations.get(args.session_id);
     if(!c?.info?.id||c.info.id!==args.session_id)throw Error('Native conversation not found');
